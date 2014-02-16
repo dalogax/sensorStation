@@ -2,8 +2,6 @@
 #include <Wire.h>
 #include <SoftwareSerial.h>
 #include <LiquidCrystal.h>
-#include <Ethernet.h>
-#include <SPI.h>
 
 #define BMP085_ADDRESS 0x77  // I2C address of BMP085
 
@@ -48,89 +46,44 @@ int noise = 0;
 #define DHT11PIN A2
 DHT11 dht11(DHT11PIN);
 
-LiquidCrystal lcd(8, 9, 5, 4, 3, 2);
+LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 
-byte mac[] = { 
-  0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
-IPAddress ip(192,168,0,88);
-IPAddress gateway(192,168,0,1);
-IPAddress subnet(255, 255, 255, 0);
-EthernetServer server(4952);
-
-unsigned long loopTimer = 0, sensorsTimer=0, lcdTimer = 0;
-#define SENSORS_TIME 1000
-#define LCD_TIME 5000
-int lcdActual = 0;
+int speed;
 
 void setup()
 {
   Serial.begin(9600);
   lcd.begin(16, 2);
   lcd.clear();
-  showLoading();
   Wire.begin();
   bmp085Calibration();
   pinMode(LDR, INPUT);
   pinMode(DHT11PIN, INPUT);
   pinMode(NPIN, INPUT);
-  Ethernet.begin(mac, ip);
-  server.begin();
+  speed = 1000;
 }
 
 void loop()
 {
-  loopTimer = millis();
-  if ((millis()-sensorsTimer) > SENSORS_TIME){
-     sensorsTimer=millis();
-     calculateTemperature();
-     calculatePressure();
-     calculateAltitude();
-     calculateLuminosity();
-     calculateHumidity();
-     calculateNoise();
-  }
-  if ((millis()-lcdTimer) > LCD_TIME){
-    lcdTimer=millis();
-    switch(lcdActual){
-      case 0:
-        showTemperature();
-        lcdActual++;
-        break;
-      case 1:
-        showPressure();
-        lcdActual++;
-        break;
-      case 2:
-        showAltitude();
-        lcdActual++;
-        break;
-      case 3:
-        showLuminosity(); 
-        lcdActual++;
-        break;
-      case 4:
-        showHumidity();
-        lcdActual++;
-        break;
-      case 5:
-        showNoise();
-        lcdActual=0;
-        break; 
-      default:
-        showError();
-    }
-  }
-  listenForEthernetClients();
+  showTemperature();
+  delay(speed); 
+  showPressure();
+  delay(speed); 
+  showAltitude();
+  delay(speed); 
+  showLuminosity();
+  delay(speed); 
+  showHumidity();
+  delay(speed); 
+  showNoise();
+  delay(speed); 
 }
 
-void calculateTemperature(){
+void showTemperature(){
   temperature = bmp085GetTemperature(bmp085ReadUT())/10;
   Serial.print("Temperature: ");
   Serial.print(temperature, DEC);
   Serial.println(" C");
-}
-
-void showTemperature(){
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Temperature (C):");
@@ -138,14 +91,11 @@ void showTemperature(){
   lcd.print(temperature);
 }
 
-void calculatePressure(){
+void showPressure(){
   pressure = bmp085GetPressure(bmp085ReadUP());
   Serial.print("Pressure: ");
   Serial.print(pressure/100, DEC);
   Serial.println(" hPa");
-}   
-
-void showPressure(){
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Pressure (hPa):");
@@ -153,14 +103,11 @@ void showPressure(){
   lcd.print(pressure/100);
 }
 
-void calculateAltitude(){
+void showAltitude(){
   altitude = (float)44330 * (1 - pow(((float) pressure/p0), 0.190295));
   Serial.print("Altitude: ");
   Serial.print(altitude, 2);
   Serial.println(" m");
-}
-
-void showAltitude(){ 
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Altitude (m):");
@@ -168,14 +115,11 @@ void showAltitude(){
   lcd.print(altitude);
 }
 
-void calculateLuminosity(){
+void showLuminosity(){
   luminosity=map(analogRead(LDR),0,1023,100,0);
   Serial.print("Luminosity: ");
   Serial.print(luminosity);
   Serial.println(" %");
-}
-
-void showLuminosity(){
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Luminosity (%):");
@@ -183,15 +127,12 @@ void showLuminosity(){
   lcd.print(luminosity);
 }
 
-void calculateHumidity(){
+void showHumidity(){
   float temp;
   int chk = dht11.read(humidity,temp);
   Serial.print("Humidity: ");
   Serial.print(humidity);
   Serial.println(" %");
-}
-
-void showHumidity(){
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Humidity (%):");
@@ -199,98 +140,17 @@ void showHumidity(){
   lcd.print(humidity);
 }
 
-void calculateNoise(){
-  noise=map(analogRead(NPIN),0,1023,0,100);  
+void showNoise(){
+  noise=map(analogRead(NPIN),0,1023,0,100);
   Serial.print("Noise: ");
   Serial.print(noise);
   Serial.println(" %");
-}
-
-void showNoise(){
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Noise (%):");
   lcd.setCursor(0, 1);
   lcd.print(noise);
 }
-
-void showLoading(){
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Loading...");
-  lcd.setCursor(0, 1);
-  lcd.print(":-)");
-}
-
-void showError(){
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("ERROR");
-  lcd.setCursor(0, 1);
-  lcd.print(":-(");
-}
-
-void listenForEthernetClients() {
-  // listen for incoming clients
-  EthernetClient client = server.available();
-  if (client) {
-    Serial.println("Got a client");
-    // an http request ends with a blank line
-    boolean currentLineIsBlank = true;
-    while (client.connected()) {
-      if (client.available()) {
-        char c = client.read();
-        // if you've gotten to the end of the line (received a newline
-        // character) and the line is blank, the http request has ended,
-        // so you can send a reply
-        if (c == '\n' && currentLineIsBlank) {
-          // send a standard http response header
-          client.println("HTTP/1.1 200 OK");
-          client.println("Content-Type: text/html");
-          client.println();
-          client.print("Temperature: ");
-          client.print(temperature);
-          client.println(" C");
-          client.println("<br />");
-          client.print("Pressure: ");
-          client.print(pressure/100);
-          client.println(" hPa");
-          client.println("<br />");
-          client.print("Altitude: ");
-          client.print(altitude);
-          client.println(" m");
-          client.println("<br />"); 
-          client.print("Luminosity: ");
-          client.print(luminosity);
-          client.println(" %"); 
-          client.println("<br />");
-          client.print("Humidity: ");
-          client.print(humidity);
-          client.println(" %");
-          client.println("<br />");
-          client.print("Noise: ");
-          client.print(noise);
-          client.println(" %");
-          client.println("<br />");
-          break;
-        }
-        if (c == '\n') {
-          // you're starting a new line
-          currentLineIsBlank = true;
-        } 
-        else if (c != '\r') {
-          // you've gotten a character on the current line
-          currentLineIsBlank = false;
-        }
-      }
-    }
-    // give the web browser time to receive the data
-    delay(1);
-    // close the connection:
-    client.stop();
-  }
-} 
-
 
 // Stores all of the bmp085's calibration values into global variables
 // Calibration values are required to calculate temp and pressure
